@@ -286,6 +286,28 @@ describe("what is sent", () => {
         expect(page.warnings).toEqual([]);
     });
 
+    it("leaves out a getter of the scope that throws, with a warning, and sends the rest", async () => {
+        const page = await mount(
+            `<div n-scope="{ items: null, name: 'a', get count() { return this.items.length } }"><button id="b" n-on-click="$post('/x', this)"></button></div>`,
+            { server: () => "" },
+        );
+        page.$("#b").click();
+        await page.settle();
+        expect(page.requests[0].body).toBe("name=a");
+        expect(page.warnings.map(([message, key]) => [message, key])).toEqual([["[Nagi] cannot send:", "count"]]);
+    });
+
+    it("sends an inner scope as an object even when an outer scope has names an element or event has", async () => {
+        const page = await mount(
+            `<div n-scope="{ nodeType: 1, preventDefault() {}, append() {} }"><div n-scope="{ name: 'a' }"><button id="b" n-on-click="$post('/x', this)"></button></div></div>`,
+            { server: () => "" },
+        );
+        page.$("#b").click();
+        await page.settle();
+        expect(page.requests[0].body).toBe("name=a");
+        expect(page.warnings).toEqual([]);
+    });
+
     it("sends nothing of a scopeless element's own scope when it is passed", async () => {
         const page = await mount(`<button id="b" n-on-click="$post('/x', this)"></button>`, { server: () => "" });
         page.$("#b").click();
@@ -603,7 +625,7 @@ describe("reads and writes", () => {
         );
         const scope = page.scope("#first");
         page.$("#first").click();
-        const unreadable = { get bad() { throw new Error("no"); } };
+        const unreadable = new Proxy({}, { ownKeys() { throw new Error("no"); } });
         expect(() => scope.$get("/y", unreadable)).toThrow("no");
         answer(`<div id="target">new</div>`);
         await page.settle();

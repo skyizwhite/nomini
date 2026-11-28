@@ -472,8 +472,15 @@
     };
 
     const objectBody = (data) => {
-        const pairs = Object.entries(data ?? {}).flatMap(([key, value]) =>
-            [value]
+        const pairs = Object.keys(data ?? {}).flatMap((key) => {
+            let value;
+            try {
+                value = data[key];
+            } catch (err) {
+                console.warn("[Nagi] cannot send:", key, "\n", err);
+                return [];
+            }
+            return [value]
                 .flat()
                 .flatMap((item) => (isListOf(item, "item") ? [...item] : [item]))
                 .flatMap((item) => {
@@ -483,8 +490,8 @@
                     if (text !== undefined) return [[key, text]];
                     console.warn("[Nagi] cannot send:", key, item);
                     return [];
-                }),
-        );
+                });
+        });
         const body = pairs.some(([, value]) => isBlob(value)) ? new FormData() : new URLSearchParams();
         pairs.forEach(([key, value]) => body.append(key, value));
         return body;
@@ -492,6 +499,7 @@
 
     const bodyOf = (data) => {
         if (typeof data === "string") return new URLSearchParams(data);
+        if (announcers.has(data)) return objectBody(data);
         if (typeof data?.preventDefault === "function" || data?.nodeType === 1) return formBody(data);
         if (isListOf(data, "append")) return data;
         return objectBody(data);

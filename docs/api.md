@@ -30,7 +30,7 @@ Rules that apply to all of them:
 - Declare the names you assign, in `n-scope` or `n-let-*`. Assigning an undeclared name makes a global variable.
 - Changes are tracked when a name is assigned: write `items = [...items, x]`, not `items.push(x)`, and `user = { ...user, name }`, not `user.name = name`.
 - An assignment takes effect at once: every binding that reads the name runs again before the next statement. Code right after it sees the page updated, so `open = true; $refs.input.focus()` works. It also means that after `first = 'Grace'; last = 'Hopper'`, a binding that reads both runs twice, the first time with the new first name and the old last name. The page is drawn only after the handler, so the in-between state is not seen, but an expression that needs the two to agree, such as `items[index].name` after `items = newItems; index = 0`, can throw, and a `$watch` that sends a request sends one more. Assign related values as one object (`filter = { page: 1, q }`) or in an order where each step is consistent, and start requests from the handler after the assignments rather than from a `$watch`.
-- A binding or `$watch` that assigns a name it reads sets itself off again. When one runs 100 times in a row, Nagi stops it and logs an error that names the element, the attribute, and the name that kept changing. The stopped binding does not run again until its element is set up again. Treat the error as a bug to fix: assign in a handler instead, or compute the value without assigning what the binding reads.
+- Bindings and `$watch`es that assign names the others read can keep setting each other off, as `n-bind-title="a = b + 1"` next to `n-bind-title="b = a + 1"` would. (One that assigns a name it reads itself is not run again by its own assignment.) When one runs 100 times in a row this way, Nagi stops it and logs an error that names the element and the attribute (or `$watch` or `$persist`), and the name that kept changing. The stopped binding does not run again until its element is set up again. Treat the error as a bug to fix: assign in a handler instead, or compute the values without bindings assigning what others read.
 
 **Security.** Nagi runs the values as code with `new Function`:
 
@@ -68,7 +68,7 @@ Adds one name to the scope from an expression, which can use the names of outer 
 
 - Write it on the element of `n-scope`; elsewhere Nagi logs an error and ignores it.
 - It adds the name to the scope (the copy of the `n-scope` object), or sets it there if the object has it; the object itself is not changed.
-- Names starting with `$` or `_nagi` (in any case), `__host` and `__proto__` are reserved for Nagi.
+- Names starting with `$` or `_nagi` (in any case), `__host` and `__proto__` are reserved for Nagi, here, as keys of the `n-scope` object and as names of `n-form` fields. Nagi logs an error and leaves such a name out.
 
 ### `n-bind-<property>`
 
@@ -86,7 +86,7 @@ Sets a property of the element to an expression, and keeps it up to date.
 
 An async binding (one that gives a promise, such as `load(id)` with an async `load`) follows only the names it reads before its first `await`. In the async function it calls, read the names first, as in `const { id, lang } = this; const data = await load(id)`. An async binding that, after an `await`, writes a name it read before the `await` runs again each time the value written differs, which for fetched data is every time; do that write in the `n-on-*` handler of the event that changes what it depends on.
 
-Attributes with no property, such as most SVG attributes (`d`, `viewBox`, `href` of `<use>`), cannot be bound. Set them from a `$watch` made in `n-on-init`, which stops when the element is torn down:
+Attributes with no writable property, such as most SVG attributes (`d`, `viewBox`, `href` of `<use>`), cannot be bound. Set them from a `$watch` made in `n-on-init`, which stops when the element is torn down:
 
 ```html
 <svg><use n-on-init="$watch(() => $el.setAttribute('href', open ? '#icon-open' : '#icon-closed'))"></use></svg>
@@ -98,8 +98,8 @@ Attributes with no property, such as most SVG attributes (`d`, `viewBox`, `href`
 |---|---|
 | `n-bind-class="…"` | Adds the classes of a string, an array, or an object's keys whose values are truthy, and takes off the ones it added that are no longer there. Classes written in the HTML stay |
 | `n-bind-class.<name>="…"` | Toggles one class |
-| `n-bind-style.<css-name>="…"` | Sets one style, `--custom` properties included. `null` or `false` removes it |
-| `n-bind-dataset.<name>="…"` | Sets `data-<name>`. `null` or `false` removes it |
+| `n-bind-style.<css-name>="…"` | Sets one style, `--custom` properties included. `null`, `undefined` or `false` removes it |
+| `n-bind-dataset.<name>="…"` | Sets `data-<name>`. `null`, `undefined` or `false` removes it |
 
 ```html
 <li n-bind-class="{ done: item.done, active: item.id === current }"
@@ -220,7 +220,7 @@ Every scope has these names. They are not sent with the scope. Don't define them
 | `$debounce(fn, ms, options)` | Runs `fn` once calls have stopped for `ms` |
 | `$persist(name, key)` | Keeps a name of the scope in `localStorage` |
 
-**`$watch(fn)`.** The watch belongs to the element it is made from and stops when that element is torn down. An async `fn` follows only the names it reads before its first `await`, as an async binding does. Make no `$watch` or `$persist` after an `await` in a binding or `$watch`, since each run would add another. Only the value a binding returns is dropped when a newer run has overtaken it, so return results that arrive late from an `n-bind-*` rather than assigning them from an async `$watch`. A rejected `fn` is logged.
+**`$watch(fn)`.** The watch belongs to the element it is made from and stops when that element is torn down. An async `fn` follows only the names it reads before its first `await`, as an async binding does, and, like one, runs again each time it writes, after an `await`, a different value to a name it read before it. Make no `$watch` or `$persist` after an `await` in a binding or `$watch`, since each run would add another. Only the value a binding returns is dropped when a newer run has overtaken it, so return results that arrive late from an `n-bind-*` rather than assigning them from an async `$watch`. A rejected `fn` is logged.
 
 **`$debounce(fn, ms, { key, abortable })`.** Calls count as one, so only the last runs, when they come from the same place and pass a function with the same code:
 
@@ -307,7 +307,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 
 | Event | When |
 |---|---|
-| `init` | An element with `n-bind-*` or `n-on-*` (at least one that Nagi could set up) is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
+| `init` | An element with `n-on-*`, or with an `n-bind-*` that Nagi could set up, is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
 | `destroy` | An element that got `init` is about to be removed by a swap, or is passed to `nagi.destroy`. An element torn down before its `init` fired gets no `destroy` |
 | `fetcherr` | A request fails or times out, or its response is not 2xx. `e.detail` has `url`, `status`, `text`, `err` and `swapped` |
 | `fetchskip` | A write is skipped because the same one is in flight. `e.detail` has `method` and `url` |
@@ -323,7 +323,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 <body n-on-fetcherr.window="alert(`Failed: ${e.detail.status ?? e.detail.err}`)">
 ```
 
-- A request whose element is torn down before it finishes, even if the element is set up again, sends its `fetch*` events to `document`. This includes a response that replaces the element that sent it: catch its `fetchdone` with `.window`.
+- A request whose element has left the page, or was torn down before the request finished (even if it was set up again), sends its `fetch*` events to `document`. This includes a response that replaces the element that sent it: catch its `fetchdone` with `.window`.
 
 ## Changing the page from scripts
 
@@ -332,7 +332,7 @@ Nagi sets up the page when it loads, and what responses bring in. When another s
 | Function | Description |
 |---|---|
 | `nagi.init(el)` | Sets up `el` and what is inside it that is not set up yet, in the scopes around it. Call it on the outermost element added, and only after it is in the page. Calling it again does nothing more |
-| `nagi.destroy(el)` | Tears down `el` and what is inside it as a swap would: sends `destroy`, stops its bindings, listeners, timers and reads, and takes it out of `$refs`. Call it before or after removing `el` |
+| `nagi.destroy(el)` | Tears down `el` and what is inside it as a swap would: sends `destroy` to the elements that got `init`, stops its bindings, listeners, timers and reads, and takes it out of `$refs`. Call it before or after removing `el` |
 
 ```js
 nagi.destroy(row);

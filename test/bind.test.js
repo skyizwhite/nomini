@@ -74,7 +74,7 @@ describe("values", () => {
         expect(page.errors).toEqual([]);
     });
 
-    it("passes undefined as it is to aria*, popover, crossOrigin, role and outerHTML, and to a property that held no text when bound", async () => {
+    it("passes undefined as it is to aria*, popover, crossOrigin, role, outerHTML and outerText, and to a property that held no text when bound", async () => {
         const written = [];
         const spy = (proto, name, start) => {
             const values = new WeakMap();
@@ -91,20 +91,20 @@ describe("values", () => {
         };
         const page = await mount(
             `<div n-scope="{ cfg: {}, label: 'Hi' }">
-                <div id="p" n-bind-ariapressed="cfg.pressed" n-bind-popover="cfg.mode" n-bind-role="cfg.role" n-bind-outerhtml="cfg.html"></div>
+                <div id="p" n-bind-ariapressed="cfg.pressed" n-bind-popover="cfg.mode" n-bind-role="cfg.role" n-bind-outerhtml="cfg.html" n-bind-outertext="cfg.text"></div>
                 <img id="i" n-bind-crossorigin="cfg.cors">
                 <span id="s" n-bind-mylabel="label"></span>
             </div>`,
             {
                 beforeInit: (window) => {
-                    for (const name of ["ariaPressed", "popover", "role", "outerHTML"]) spy(window.HTMLElement.prototype, name, "x");
+                    for (const name of ["ariaPressed", "popover", "role", "outerHTML", "outerText"]) spy(window.HTMLElement.prototype, name, "x");
                     spy(window.HTMLImageElement.prototype, "crossOrigin", "x");
                     spy(window.HTMLSpanElement.prototype, "mylabel", undefined);
                 },
             },
         );
         page.scope("#p").label = undefined;
-        expect(written).toEqual([["ariaPressed", undefined], ["popover", undefined], ["role", undefined], ["outerHTML", undefined], ["crossOrigin", undefined], ["mylabel", "Hi"], ["mylabel", undefined]]);
+        expect(written).toEqual([["ariaPressed", undefined], ["popover", undefined], ["role", undefined], ["outerHTML", undefined], ["outerText", undefined], ["crossOrigin", undefined], ["mylabel", "Hi"], ["mylabel", undefined]]);
         expect(page.errors).toEqual([]);
     });
 

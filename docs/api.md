@@ -29,7 +29,7 @@ Rules that apply to all of them:
 - HTML lowercases attribute names, so `n-let-isOpen` defines `isopen`.
 - Declare the names you assign, in `n-scope` or `n-let-*`. Assigning an undeclared name makes a global variable.
 - Changes are tracked when a name is assigned: write `items = [...items, x]`, not `items.push(x)`, and `user = { ...user, name }`, not `user.name = name`.
-- An assignment takes effect at once: every binding that reads the name runs again before the next statement. Code right after it sees the page updated, so `open = true; $refs.input.focus()` works. It also means that after `first = 'Grace'; last = 'Hopper'`, a binding that reads both runs twice, the first time with the new first name and the old last name. The page is drawn only after the handler, so the in-between state is not seen, but an expression that needs the two to agree, such as `items[index].name` after `items = newItems; index = 0`, can throw, and a `$watch` that sends a request sends one more. Assign related values as one object (`filter = { page: 1, q }`) or in an order where each step is consistent, and start requests from the handler after the assignments rather than from a `$watch`.
+- An assignment takes effect at once: every binding that reads the name runs again before the next statement. Code right after it sees the page updated, so `open = true; $refs.input.focus()` works. It also means that after `first = 'Grace'; last = 'Hopper'`, a binding that reads both runs twice, the first time with the new first name and the old last name. The page is not drawn until the handler returns or reaches an `await`, so the in-between state is not seen, but an expression that needs the two to agree, such as `items[index].name` after `items = newItems; index = 0`, can throw, and a `$watch` that sends a request sends one more. Assign related values as one object (`filter = { page: 1, q }`) or in an order where each step is consistent, and start requests from the handler after the assignments rather than from a `$watch`.
 - Bindings and `$watch`es that assign names the others read can keep setting each other off, as `n-bind-title="a = b + 1"` next to `n-bind-title="b = a + 1"` would. (One that assigns a name it reads itself is not run again by its own assignment.) When one runs 100 times in a row this way, Nagi stops it and logs an error that names the element and the attribute (or `$watch` or `$persist`), and the name that kept changing. The stopped binding does not run again until its element is set up again. Treat the error as a bug to fix: assign in a handler instead, or compute the values without bindings assigning what others read.
 
 **Security.** Nagi runs the values as code with `new Function`:
@@ -233,7 +233,7 @@ Every scope has these names. They are not sent with the scope. Don't define them
 
 **Where helpers act from.** Helpers named bare in `n-on-*` and `n-bind-*` (`$dispatch`, not `this.$dispatch`) act from their element, even after an `await` and even if the element has left the page by then; what it dispatches then reaches only what left with it. Called through `this`, as in a method of the scope, helpers act from that element only until the first `await`, and from the scope's element after it.
 
-Once an element has been torn down (by a swap or `nagi.destroy`), `$watch`, `$persist` and `$debounce` called from its handlers start nothing, and its requests are still sent but not tied to it. A method that a torn-down element's handler calls after an `await` acts from the scope's element, so it still starts its work.
+Once an element has been torn down (by a swap or `nagi.destroy`), `$watch`, `$persist` and `$debounce` called from its handlers start nothing, and its requests are still sent but not tied to it. A method that a torn-down element's handler calls after an `await` acts from the scope's element, so it still starts its work, unless the scope's element was torn down too.
 
 ## Requests
 
@@ -307,7 +307,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 
 | Event | When |
 |---|---|
-| `init` | An element with `n-on-*`, or with an `n-bind-*` that Nagi could set up, is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
+| `init` | An element with `n-on-*`, or with an `n-bind-*` whose property Nagi accepts, is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
 | `destroy` | An element that got `init` is about to be removed by a swap, or is passed to `nagi.destroy`. An element torn down before its `init` fired gets no `destroy` |
 | `fetcherr` | A request fails or times out, or its response is not 2xx. `e.detail` has `url`, `status`, `text`, `err` and `swapped` |
 | `fetchskip` | A write is skipped because the same one is in flight. `e.detail` has `method` and `url` |
@@ -315,7 +315,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 | `fetchdone` | A request got a 2xx response, after any HTML in it is swapped in and the request is no longer counted in `$fetching`. `e.detail` has `url` (the one requested), `status` and `swapped` (whether any element was swapped). Not sent for `n-redirect` |
 
 - `init` and `destroy` do not bubble.
-- An aborted request sends no `fetcherr` and no `fetchdone`: a read cut off by a newer request of the scope or by the teardown of its element, and any request stopped by `$abort()`. A request that runs out of its `timeout` sends `fetcherr`.
+- A request aborted before its response arrives sends no `fetcherr` and no `fetchdone`: a read cut off by a newer request of the scope or by the teardown of its element, and any request stopped by `$abort()`. A request that runs out of its `timeout` sends `fetcherr`.
 - Elements an `init` handler adds need `nagi.init`, and elements inside whose `n-*` attributes it changes need `nagi.destroy` and then `nagi.init`.
 - The `fetch*` events are sent to the element that made the request, and bubble. Listen with `.window` to catch them all:
 

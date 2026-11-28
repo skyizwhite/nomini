@@ -89,16 +89,19 @@ describe("n-form", () => {
     });
 
     it("leaves the submit buttons alone, so a bind on $fetching disables them", async () => {
-        const page = await mount(`
-            <form id="f" n-scope n-form>
+        let answer;
+        const page = await mount(
+            `<form id="f" n-scope n-form>
                 <button id="plain"></button>
                 <button id="bound" n-bind-disabled="$fetching"></button>
-            </form>
-        `);
-        const scope = page.$("#f").nagiProxy;
-        scope.$fetching = true;
+                <button id="go" type="button" n-on-click="$get('/x')"></button>
+            </form>`,
+            { server: () => new Promise((resolve) => (answer = resolve)) },
+        );
+        page.$("#go").click();
         expect([page.$("#plain").disabled, page.$("#bound").disabled]).toEqual([false, true]);
-        scope.$fetching = false;
+        answer("");
+        await page.settle();
         expect([page.$("#plain").disabled, page.$("#bound").disabled]).toEqual([false, false]);
     });
 

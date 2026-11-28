@@ -142,12 +142,12 @@ describe("n-ref", () => {
         expect(page.window.bindRuns).toBe(before);
     });
 
-    it("keeps $refs when a handler assigns it, and still drops refs after", async () => {
+    it("refuses an assignment to $refs with an error, and still drops refs after", async () => {
         const page = await mount(`<div id="d" n-scope><i id="x" n-ref="x"></i><button id="b" n-on-click="$refs = {}"></button></div>`);
         page.$("#b").click();
         page.window.nagi.destroy(page.$("#x"));
         expect(page.scope("#d").$refs.x).toBeUndefined();
-        expect(page.errors).toEqual([]);
+        expect(page.errors.map(([message]) => message)).toEqual(["[Nagi] this name is Nagi's own, so it cannot be assigned:"]);
     });
 
     it("turns $refs into text, and lists the refs of outer scopes too, updating binds that list them", async () => {
@@ -203,11 +203,11 @@ describe("n-ref", () => {
         expect(page.$("#s").textContent).toBe("yes");
     });
 
-    it("ignores an assignment to this.$refs in strict code", async () => {
+    it("refuses an assignment to this.$refs in strict code with an error, without throwing", async () => {
         const page = await mount(`<div id="d" n-scope="{ reset() { 'use strict'; this.$refs = {}; } }"><i n-ref="x"></i><button id="b" n-on-click="reset()"></button></div>`);
         page.$("#b").click();
         expect(page.scope("#d").$refs.x).toBeTruthy();
-        expect(page.errors).toEqual([]);
+        expect(page.errors.map(([message]) => message)).toEqual(["[Nagi] this name is Nagi's own, so it cannot be assigned:"]);
     });
 
     it("runs a bind that reads two refs a swap changed once", async () => {

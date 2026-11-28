@@ -51,7 +51,7 @@ Makes a reactive scope from an object. Elements inside it can read and write its
 
 - The value can be any expression that gives an object, such as `n-scope="makeCart($el)"`. Write methods with method syntax (`inc() { this.n++ }`), not arrow functions, and reach the scope through `this`.
 - The scope is a copy of the object: its own properties, getters and setters included, on the same prototype. Code that keeps a reference to the original object changes the original, not the scope, so a method written as `inc() { state.n++ }` updates nothing; write `this.n++`. Objects that use `#private` fields do not work, since the copy has none.
-- The value can read the names of outer scopes, once when the scope is made, but not Nagi's `$` names other than `$el`. In it, `this` is not the scope, and assigning a name of an outer scope does nothing.
+- The value can read the names of outer scopes, once when the scope is made, but not Nagi's `$` names other than `$el`. In it, `this` is not the scope, and assigning a name of an outer scope logs an error and does nothing.
 - `n-scope` with no value makes an empty scope. If the value throws, or gives a promise, a built-in object such as a `Map`, or no object at all, Nagi logs an error and leaves the element, its attributes and what is inside it alone, as with `n-ignore`. To set it up once fixed, call `nagi.destroy` and then `nagi.init` on it.
 - Scopes nest. Inner elements can use the names of outer scopes too, and assigning such a name changes it in the scope that has it.
 
@@ -80,7 +80,8 @@ Sets a property of the element to an expression, and keeps it up to date.
 
 - The name is the DOM property, all lowercase: `n-bind-textcontent` sets `textContent`, `n-bind-htmlfor` sets `htmlFor` (the `for` attribute), and `n-bind-arialabel` sets `ariaLabel` (`aria-label`). Nagi logs an error for a property the element does not have, or cannot write.
 - `undefined` writes an empty text to a property that holds text when it is bound, such as `value`, `title` or `href`, so a value not there yet is not shown as the word "undefined". An empty `href` still links to the page itself.
-- `null`, and every other value, is written as it is. `undefined` is written as it is to properties that hold no text when bound, and to `aria*`, `role`, `popover` and `crossOrigin`, where `undefined` and `null` remove the attribute. `outerHTML` and `outerText` replace the element whatever is written, `undefined` included, which becomes the text "undefined".
+- `null`, and every other value, is written as it is. `undefined` is written as it is to properties that hold no text when bound, and to `aria*`, `role`, `popover` and `crossOrigin`, where `undefined` and `null` remove the attribute.
+- `outerHTML` and `outerText` cannot be bound, since writing them takes the element away; Nagi logs an error.
 - A promise sets the property when it resolves. When the binding runs again before it resolves, the older result is dropped.
 - HTML put in with `n-bind-innerhtml` is not set up: its `n-*` attributes do nothing. Bring HTML from the server in with a [response](#responses) instead.
 
@@ -207,7 +208,7 @@ Pick the values a request needs from `$dataset()` rather than sending all of it.
 
 ## Helpers
 
-Every scope has these names. They are not sent with the scope. Don't define them in `n-scope` or `n-let-*` (Nagi logs an error), and don't assign them.
+Every scope has these names. They are not sent with the scope. Defining them in `n-scope` or `n-let-*`, or assigning any name that starts with `$` or `_nagi`, logs an error and changes nothing.
 
 | Helper | Description |
 |---|---|
@@ -333,7 +334,7 @@ Nagi sets up the page when it loads, and what responses bring in. When another s
 
 | Function | Description |
 |---|---|
-| `nagi.init(el)` | Sets up `el` and what is inside it that is not set up yet, in the scopes around it. Call it on the outermost element added, and only after it is in the page. Calling it again does nothing more |
+| `nagi.init(el)` | Sets up `el` and what is inside it that is not set up yet, in the scopes around it. Call it on the outermost element added, once it is in the page; for an element not in the page, it logs an error and does nothing. Calling it again does nothing more |
 | `nagi.destroy(el)` | Tears down `el` and what is inside it as a swap would: sends `destroy` to the elements that got `init`, stops its bindings, listeners, timers and reads, and takes it out of `$refs`. Call it before or after removing `el` |
 
 ```js

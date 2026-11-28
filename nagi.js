@@ -789,11 +789,12 @@
 
     let nagiWriting = false;
     const asNagi = (fn) => {
+        const was = nagiWriting;
         nagiWriting = true;
         try {
             return fn();
         } finally {
-            nagiWriting = false;
+            nagiWriting = was;
         }
     };
 
@@ -828,8 +829,10 @@
                 return Reflect.get(obj, prop, receiver);
             },
             set(obj, prop, val, receiver) {
-                if (!nagiWriting && typeof prop === "string" && /^(\$|_nagi)/i.test(prop)) {
-                    console.error("[Nagi] this name is Nagi's own, so it cannot be assigned:", prop, obj._nagiEl ?? document);
+                const byNagi = nagiWriting;
+                nagiWriting = false;
+                if (!byNagi && typeof prop === "string" && /^(\$|_nagi)/i.test(prop)) {
+                    console.error("[Nagi] this name is Nagi's own, so it cannot be assigned:", prop, currentEl ?? obj._nagiEl ?? document);
                     return true;
                 }
                 if (fromOuter(obj, prop)) return Reflect.set(outer, prop, val);
@@ -1035,7 +1038,7 @@
         const [first, ...subs] = rest.split(".");
         const sub = subs.join(".");
         const main = first === "class" ? first : propOf(bindEl, first);
-        if (/^outer(html|text)$/i.test(main ?? "") && !subs.length) return console.error("[Nagi] cannot write:", name, bindEl);
+        if (/^outer(html|text)$/i.test(main ?? "")) return console.error("[Nagi] cannot write:", name, bindEl);
         const keyed = !!main && main in keyedWriters;
         const inner = !sub || keyed ? sub : propOf(bindEl[main], sub);
         if (!main || inner === undefined) return console.error("[Nagi] no such property:", name, bindEl);

@@ -82,6 +82,17 @@ describe("misuse", () => {
         expect(scope.$fetching).toBe(false);
     });
 
+    it("refuses an assignment to a helper from a bind that runs while Nagi updates $fetching", async () => {
+        const page = await mount(
+            `<div id="d" n-scope><b n-bind-title="$fetching ? ($dispatch = null, 'x') : ''"></b><button id="g" n-on-click="$get('/x')"></button></div>`,
+            { server: () => "" },
+        );
+        page.$("#g").click();
+        await page.settle();
+        expect(typeof page.scope("#d").$dispatch).toBe("function");
+        expect(page.errors.map(([, name]) => name)).toEqual(["$dispatch"]);
+    });
+
     it("logs an error when an n-scope value assigns a name of an outer scope, and leaves it as it was", async () => {
         const page = await mount(`<div id="o" n-scope="{ count: 1 }"><div id="i" n-scope="(count = 5, {})"></div></div>`);
         expect(page.scope("#o").count).toBe(1);

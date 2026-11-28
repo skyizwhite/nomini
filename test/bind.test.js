@@ -54,10 +54,23 @@ describe("properties", () => {
 });
 
 describe("values", () => {
-    it("binds undefined for an empty value", async () => {
+    it("writes an empty text for an empty value", async () => {
         const page = await mount(`<div n-scope="{}"><span id="s" n-bind-title=""></span></div>`);
-        expect(page.$("#s").title).toBe("undefined");
+        expect(page.$("#s").title).toBe("");
         expect(page.errors).toEqual([]);
+    });
+
+    it("writes undefined as an empty text to a text property, and passes null and other properties as they are", async () => {
+        const page = await mount(`
+            <div n-scope="{ user: {} }">
+                <input id="i" n-bind-value="user.name">
+                <a id="a" href="/x" n-bind-href="user.link"></a>
+                <span id="s" title="t" n-bind-title="user.tip" n-bind-lang="null"></span>
+                <button id="b" aria-pressed="true" n-bind-ariapressed="user.pressed" n-bind-hidden="user.hidden"></button>
+            </div>
+        `);
+        expect([page.$("#i").value, page.$("#a").getAttribute("href"), page.$("#s").title, page.$("#s").lang]).toEqual(["", "", "", "null"]);
+        expect([page.$("#b").ariaPressed, page.$("#b").hidden]).toEqual([undefined, false]);
     });
 
     it("takes an expression that ends in a line comment", async () => {
@@ -94,7 +107,7 @@ describe("values", () => {
 
     it("takes a value that is only a comment as undefined", async () => {
         const page = await mount(`<div n-scope><span id="s" n-bind-title="// later"></span></div>`);
-        expect(page.$("#s").title).toBe("undefined");
+        expect(page.$("#s").title).toBe("");
         expect(page.errors).toEqual([]);
     });
 

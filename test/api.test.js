@@ -98,6 +98,12 @@ describe("misuse", () => {
         expect(page.scope("#o").count).toBe(1);
         expect(page.errors.map(([message, name]) => [message, name])).toEqual([["[Nagi] n-scope cannot assign a name of an outer scope:", "count"]]);
     });
+
+    it("logs an error when an n-scope value assigns one of Nagi's names, and makes no global of it", async () => {
+        const page = await mount(`<div id="o" n-scope><div id="i" n-scope="($fetching = true, { seen: typeof $get })"></div></div>`);
+        expect([page.window.$fetching, page.scope("#o").$fetching, page.scope("#i").seen]).toEqual([undefined, false, "undefined"]);
+        expect(page.errors.map(([message, name]) => [message, name])).toEqual([["[Nagi] n-scope cannot assign a name of an outer scope:", "$fetching"]]);
+    });
 });
 
 describe("nagi.destroy", () => {

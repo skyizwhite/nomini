@@ -751,8 +751,9 @@
         if (!outer) return fn({});
         let open = true;
         const names = new Proxy(Object.create(null), {
-            has: (_, name) => open && typeof name === "string" && !/^(\$|_nagi)/i.test(name) && name in outer,
+            has: (_, name) => open && typeof name === "string" && name in outer,
             get: (_, name) => {
+                if (typeof name === "string" && /^(\$|_nagi)/i.test(name)) return undefined;
                 const value = outer[name];
                 return typeof value === "function" ? boundTo(outer, value) : value;
             },

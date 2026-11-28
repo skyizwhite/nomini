@@ -633,6 +633,20 @@
     const heldClasses = (el) => new Set([...(el.nagiOwnClasses?.values() ?? [])].flatMap((names) => [...names]));
 
     const hasOwnLook = (el, name) => (el.nagiLook ? el.nagiLook.has(name) : el.classList.contains(name));
+
+    const touchClass = (el, name) => el.nagiLook && (el.nagiTouched ??= new Set()).add(name);
+
+    const settleClass = (el, from, markup) => {
+        const old = new Set(classesOf(from ?? "").filter(Boolean));
+        const now = new Set(el.classList);
+        const touched = el.nagiTouched ?? new Set();
+        const names = new Set([...el.nagiLook, ...heldClasses(el)]);
+        now.forEach((name) => old.has(name) || touched.has(name) || names.add(name));
+        old.forEach((name) => now.has(name) || touched.has(name) || names.delete(name));
+        if (names.size) el.setAttribute("class", [...names].join(" "));
+        else if (markup == null) el.removeAttribute("class");
+        else el.setAttribute("class", "");
+    };
     const readSettled = (el) => attributesToSettle.map((attr) => [attr, el.getAttribute(attr)]);
 
     const cssMorph = (roots, removed) => {
@@ -699,10 +713,9 @@
         void document.documentElement.offsetWidth;
         requestAnimationFrame(() =>
             moving.forEach(([newEl, settled, oldValues]) => {
-                const names = [...new Set([...newEl.nagiLook, ...heldClasses(newEl)])];
-                settled[1] = ["class", names.length ? names.join(" ") : settled[1][1] == null || newEl.nagiMarkup == null ? null : ""];
-                newEl.nagiLook = newEl.nagiMarkup = null;
-                settled.forEach(([attr, value], i) => settleAttr(newEl, attr, oldValues[i][1], value));
+                settleClass(newEl, oldValues[1][1], newEl.nagiMarkup);
+                newEl.nagiLook = newEl.nagiMarkup = newEl.nagiTouched = null;
+                settled.forEach(([attr, value], i) => attr === "class" || settleAttr(newEl, attr, oldValues[i][1], value));
                 const reruns = [...(newEl.nagiRuns ?? [])].filter((run) => rerunAtSettle.includes(run.attr));
                 reruns.forEach((run) => run());
                 if (reruns.some((run) => run.attr === "classname")) heldClasses(newEl).forEach((name) => newEl.classList.add(name));
@@ -988,6 +1001,7 @@
             const owned = (el.nagiOwnClasses ??= new Map());
             const mine = value && (owned.get("." + sub)?.has(sub) || !hasOwnLook(el, sub));
             el.classList.toggle(sub, !!value);
+            touchClass(el, sub);
             if (!value) el.nagiLook?.delete(sub);
             owned.set("." + sub, new Set(mine ? [sub] : []));
         },
@@ -1044,10 +1058,11 @@
         const write = (value) => {
             const next = new Set(classesOf(value).filter(Boolean));
             const mine = new Set();
-            added.forEach((name) => next.has(name) || bindEl.classList.remove(name));
+            added.forEach((name) => next.has(name) || (bindEl.classList.remove(name), touchClass(bindEl, name)));
             next.forEach((name) => {
                 if (added.has(name) || !hasOwnLook(bindEl, name)) mine.add(name);
                 bindEl.classList.add(name);
+                touchClass(bindEl, name);
             });
             added = mine;
             (bindEl.nagiOwnClasses ??= new Map()).set(write, mine);

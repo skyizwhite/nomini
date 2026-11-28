@@ -575,6 +575,33 @@ describe("cssMorph", () => {
         expect(page.$("#target").className).toBe("card");
     });
 
+    it("puts a class a whole bind holds at the frame even when a keyed bind took it off before", async () => {
+        const { frames, beforeInit } = heldFrames();
+        const page = await mount(
+            `<div id="d" n-scope="{ a: true, b: true }"><button id="b" n-on-click="$get('/x')"></button><div id="target" class="x"></div></div>`,
+            { server: () => `<div id="target" class="card" n-bind-class="{ x: a }" n-bind-class.x="b"></div>`, beforeInit },
+        );
+        page.$("#b").click();
+        await page.settle();
+        page.scope("#d").b = false;
+        frames.forEach((fn) => fn());
+        expect(page.$("#target").className).toBe("card x");
+    });
+
+    it("takes off at the frame a class a bind added before the frame when the element was torn down", async () => {
+        const { frames, beforeInit } = heldFrames();
+        const page = await mount(
+            `<div id="d" n-scope="{ on: false }"><button id="b" n-on-click="$get('/x')"></button><div id="a" class="x"></div></div>`,
+            { server: () => `<div id="a" class="card" n-bind-class="{ y: on }"></div>`, beforeInit },
+        );
+        page.$("#b").click();
+        await page.settle();
+        page.scope("#d").on = true;
+        page.window.nagi.destroy(page.$("#a"));
+        frames.forEach((fn) => fn());
+        expect(page.$("#a").className).toBe("card");
+    });
+
     it("settles an element torn down but left on the page before the frame to its new look", async () => {
         const { frames, beforeInit } = heldFrames();
         const page = await mount(

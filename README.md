@@ -186,7 +186,7 @@ Pick the values a request needs from `$dataset()` rather than sending all of it.
 
 A request sends only the data you pass:
 
-- an object (arrays repeat the key; files are sent as `FormData`; a `Date` goes as its ISO text; functions are left out, and so, with a warning, is anything that does not turn into text, such as a nested object). Passing the scope, as `this`, sends its own names but not Nagi's
+- an object (arrays repeat the key; files are sent as `FormData`; a `Date` goes as its ISO text; functions are left out, and so, with a warning, is anything that does not turn into text, such as a nested object). Passing the scope, as `this`, sends the names defined on that scope itself (not those of outer scopes or prototypes, nor Nagi's); a getter that throws is left out with a warning
 - a form, an element inside one, or a submit event, to send the form's fields
 - `FormData`, `URLSearchParams` or a query string
 

@@ -300,10 +300,10 @@ For example, the server responds with:
 
 | Response header | Effect |
 |---|---|
-| `n-redirect: <url>` | Goes to the URL instead, at any status, after a cancelable `fetchredirect`. Nothing is swapped, and no `fetcherr` or `fetchdone` is sent |
-| `n-replace-url: <url>` | Replaces the URL in the address bar, at any status, even when nothing is swapped |
+| `n-redirect: <url>` | Goes to the URL instead, at any status but a redirect (see below), after a cancelable `fetchredirect`. Nothing is swapped, and no `fetcherr` or `fetchdone` is sent |
+| `n-replace-url: <url>` | Replaces the URL in the address bar, at any status but a redirect, even when nothing is swapped |
 
-Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi sees only the final response and handles it like any other, with that response's own headers. A redirect to another origin usually fails, because the `n-request` header needs CORS there. To leave the page, answer with `n-redirect` (with a 2xx status) rather than a redirect. In particular, answer a Nagi request that needs a login with `n-redirect` or with HTML to swap in, not with a redirect to the login page, whose elements with `id`s on the current page would replace them.
+Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi sees only the final response and handles it like any other, with that response's own headers. A redirect to another origin usually fails, because the `n-request` header needs CORS there. To leave the page, answer with `n-redirect` rather than a redirect. Any status works, an error status such as 401 included, except a redirect (301, 302, 303, 307 or 308 with a `Location`), which `fetch` follows by itself before Nagi sees the header. The same goes for `n-replace-url`. In particular, answer a Nagi request that needs a login with `n-redirect` or with HTML to swap in, not with a redirect to the login page, whose elements with `id`s on the current page would replace them.
 
 ## Events
 

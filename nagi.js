@@ -257,7 +257,7 @@
         _nagiStop() {
             read?.abort();
             this._nagiAbort.abort();
-            this._nagiAbort = new AbortController();
+            asNagi(() => (this._nagiAbort = new AbortController()));
         },
         $fetch(url, method, data, options) {
             options ??= {};
@@ -308,7 +308,7 @@
             }
 
             if (!stale) {
-                this._nagiAbort = new AbortController();
+                asNagi(() => (this._nagiAbort = new AbortController()));
                 if (reading) read = controller;
                 if (reading && el) el.nagiRead = controller;
             }
@@ -324,7 +324,7 @@
                 controller.abort();
             }, Math.min(timeout, 2147483647));
             pending++;
-            this.$fetching = true;
+            asNagi(() => (this.$fetching = true));
 
             fetch(url, opts)
                 .then(async (res) => {
@@ -365,7 +365,7 @@
                     if (read === controller) read = null;
                     if (el?.nagiRead === controller) el.nagiRead = null;
                     if (deduped) writing.delete(write);
-                    if (!--pending) this.$fetching = false;
+                    if (!--pending) asNagi(() => (this.$fetching = false));
                     if (done) report("fetchdone", done);
                 });
         },
@@ -751,12 +751,13 @@
         if (!outer) return fn({});
         let open = true;
         const names = new Proxy(Object.create(null), {
-            has: (_, name) => open && typeof name === "string" && !/^(\$|_nagi)/i.test(name) && name in outer,
+            has: (_, name) => open && typeof name === "string" && name in outer,
             get: (_, name) => {
+                if (typeof name === "string" && /^(\$|_nagi)/i.test(name)) return undefined;
                 const value = outer[name];
                 return typeof value === "function" ? boundTo(outer, value) : value;
             },
-            set: () => true,
+            set: (_, name) => (console.error("[Nagi] n-scope cannot assign a name of an outer scope:", name, currentEl), true),
         });
         try {
             return fn(names);
@@ -786,6 +787,17 @@
     };
 
     const announcers = new WeakMap();
+
+    let nagiWriting = false;
+    const asNagi = (fn) => {
+        const was = nagiWriting;
+        nagiWriting = true;
+        try {
+            return fn();
+        } finally {
+            nagiWriting = was;
+        }
+    };
 
     const reactive = (rawData, outer) => {
         const trackedDeps = new Map();
@@ -818,8 +830,13 @@
                 return Reflect.get(obj, prop, receiver);
             },
             set(obj, prop, val, receiver) {
+                const byNagi = nagiWriting;
+                nagiWriting = false;
+                if (!byNagi && typeof prop === "string" && /^(\$|_nagi)/i.test(prop)) {
+                    console.error("[Nagi] this name is Nagi's own, so it cannot be assigned:", prop, currentEl ?? obj._nagiEl ?? document);
+                    return true;
+                }
                 if (fromOuter(obj, prop)) return Reflect.set(outer, prop, val);
-                if (prop === "$refs") return true;
                 const found = descriptorOf(obj, prop);
                 if (found && "value" in found && val !== Object(val) && Object.is(obj[prop], val)) return true;
                 if (!Reflect.set(obj, prop, val, receiver)) return false;
@@ -1022,6 +1039,7 @@
         const [first, ...subs] = rest.split(".");
         const sub = subs.join(".");
         const main = first === "class" ? first : propOf(bindEl, first);
+        if (/^outer(html|text)$/i.test(main ?? "")) return console.error("[Nagi] cannot write:", name, bindEl);
         const keyed = !!main && main in keyedWriters;
         const inner = !sub || keyed ? sub : propOf(bindEl[main], sub);
         if (!main || inner === undefined) return console.error("[Nagi] no such property:", name, bindEl);
@@ -1049,7 +1067,7 @@
         if (main !== "class") {
             let textual = false;
             try {
-                textual = /^inner(html|text)$/i.test(main) || (!/^(aria|role$|popover$|crossorigin$|outer(html|text)$)/i.test(main) && typeof bindEl[main] === "string");
+                textual = /^inner(html|text)$/i.test(main) || (!/^(aria|role$|popover$|crossorigin$)/i.test(main) && typeof bindEl[main] === "string");
             } catch {}
             return (value) => (bindEl[main] = value === undefined && textual ? "" : value);
         }
@@ -1248,7 +1266,7 @@
     const isElement = (name, el) => el?.nodeType === 1 || void console.error(`[Nagi] nagi.${name} needs an element:`, el);
 
     window.nagi = Object.freeze({
-        init: (el) => void (isElement("init", el) && init(el)),
+        init: (el) => void (isElement("init", el) && (el.getRootNode({ composed: true }) === document ? init(el) : console.error("[Nagi] nagi.init needs an element in the page:", el))),
         destroy: (el) => void (isElement("destroy", el) && drop(el)),
     });
 

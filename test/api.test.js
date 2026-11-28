@@ -53,6 +53,67 @@ describe("nagi.init", () => {
     });
 });
 
+describe("misuse", () => {
+    it("logs an error for nagi.init on an element not in the page, and sets it up once it is in", async () => {
+        const page = await mount(`<div id="d" n-scope="{ n: 1 }"></div>`);
+        const span = page.document.createElement("span");
+        span.setAttribute("n-bind-textcontent", "n");
+        page.window.nagi.init(span);
+        expect(page.errors.map(([message]) => message)).toEqual(["[Nagi] nagi.init needs an element in the page:"]);
+        page.$("#d").append(span);
+        page.window.nagi.init(span);
+        expect(span.textContent).toBe("1");
+    });
+
+    it("logs an error for nagi.init on an element of another document", async () => {
+        const page = await mount(`<div></div>`);
+        const other = new page.window.DOMParser().parseFromString(`<div n-scope="{ n: 2 }"><b n-on-click="n++"></b></div>`, "text/html").body.firstElementChild;
+        page.window.nagi.init(other);
+        expect(other.nagiProxy ?? null).toBe(null);
+        expect(page.errors.map(([message]) => message)).toEqual(["[Nagi] nagi.init needs an element in the page:"]);
+    });
+
+    it("refuses an assignment to a helper with an error, and keeps the helper working", async () => {
+        let answer;
+        const page = await mount(
+            `<div id="d" n-scope><button id="a" n-on-click="$fetching = true; $dispatch = null"></button><button id="g" n-on-click="$get('/x')"></button></div>`,
+            { server: () => new Promise((resolve) => (answer = resolve)) },
+        );
+        page.$("#a").click();
+        const scope = page.scope("#d");
+        expect([scope.$fetching, typeof scope.$dispatch]).toEqual([false, "function"]);
+        expect(page.errors.map(([message, name]) => name)).toEqual(["$fetching", "$dispatch"]);
+        page.$("#g").click();
+        expect(scope.$fetching).toBe(true);
+        answer("");
+        await page.settle();
+        expect(scope.$fetching).toBe(false);
+    });
+
+    it("refuses an assignment to a helper from a bind that runs while Nagi updates $fetching", async () => {
+        const page = await mount(
+            `<div id="d" n-scope><b n-bind-title="$fetching ? ($dispatch = null, 'x') : ''"></b><button id="g" n-on-click="$get('/x')"></button></div>`,
+            { server: () => "" },
+        );
+        page.$("#g").click();
+        await page.settle();
+        expect(typeof page.scope("#d").$dispatch).toBe("function");
+        expect(page.errors.map(([, name]) => name)).toEqual(["$dispatch"]);
+    });
+
+    it("logs an error when an n-scope value assigns a name of an outer scope, and leaves it as it was", async () => {
+        const page = await mount(`<div id="o" n-scope="{ count: 1 }"><div id="i" n-scope="(count = 5, {})"></div></div>`);
+        expect(page.scope("#o").count).toBe(1);
+        expect(page.errors.map(([message, name]) => [message, name])).toEqual([["[Nagi] n-scope cannot assign a name of an outer scope:", "count"]]);
+    });
+
+    it("logs an error when an n-scope value assigns one of Nagi's names, and makes no global of it", async () => {
+        const page = await mount(`<div id="o" n-scope><div id="i" n-scope="($fetching = true, { seen: typeof $get })"></div></div>`);
+        expect([page.window.$fetching, page.scope("#o").$fetching, page.scope("#i").seen]).toEqual([undefined, false, "undefined"]);
+        expect(page.errors.map(([message, name]) => [message, name])).toEqual([["[Nagi] n-scope cannot assign a name of an outer scope:", "$fetching"]]);
+    });
+});
+
 describe("nagi.destroy", () => {
     it("tears down an element another script removes, as a swap would", async () => {
         const page = await mount(`

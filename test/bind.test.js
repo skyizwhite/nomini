@@ -74,7 +74,7 @@ describe("values", () => {
         expect(page.errors).toEqual([]);
     });
 
-    it("passes undefined as it is to aria*, popover, crossOrigin, role, outerHTML and outerText, and to a property that held no text when bound", async () => {
+    it("passes undefined as it is to aria*, popover, crossOrigin and role, and to a property that held no text when bound", async () => {
         const written = [];
         const spy = (proto, name, start) => {
             const values = new WeakMap();
@@ -91,20 +91,20 @@ describe("values", () => {
         };
         const page = await mount(
             `<div n-scope="{ cfg: {}, label: 'Hi' }">
-                <div id="p" n-bind-ariapressed="cfg.pressed" n-bind-popover="cfg.mode" n-bind-role="cfg.role" n-bind-outerhtml="cfg.html" n-bind-outertext="cfg.text"></div>
+                <div id="p" n-bind-ariapressed="cfg.pressed" n-bind-popover="cfg.mode" n-bind-role="cfg.role"></div>
                 <img id="i" n-bind-crossorigin="cfg.cors">
                 <span id="s" n-bind-mylabel="label"></span>
             </div>`,
             {
                 beforeInit: (window) => {
-                    for (const name of ["ariaPressed", "popover", "role", "outerHTML", "outerText"]) spy(window.HTMLElement.prototype, name, "x");
+                    for (const name of ["ariaPressed", "popover", "role"]) spy(window.HTMLElement.prototype, name, "x");
                     spy(window.HTMLImageElement.prototype, "crossOrigin", "x");
                     spy(window.HTMLSpanElement.prototype, "mylabel", undefined);
                 },
             },
         );
         page.scope("#p").label = undefined;
-        expect(written).toEqual([["ariaPressed", undefined], ["popover", undefined], ["role", undefined], ["outerHTML", undefined], ["outerText", undefined], ["crossOrigin", undefined], ["mylabel", "Hi"], ["mylabel", undefined]]);
+        expect(written).toEqual([["ariaPressed", undefined], ["popover", undefined], ["role", undefined], ["crossOrigin", undefined], ["mylabel", "Hi"], ["mylabel", undefined]]);
         expect(page.errors).toEqual([]);
     });
 
@@ -138,6 +138,15 @@ describe("values", () => {
         const page = await mount(`<div n-scope n-let-n="1"><span id="s" n-bind-textcontent="n;"></span></div>`);
         expect(page.$("#s").textContent).toBe("1");
         expect(page.errors).toEqual([]);
+    });
+
+    it("refuses n-bind-outerhtml and n-bind-outertext, which would take the element away", async () => {
+        const page = await mount(`<div n-scope="{ html: '<b>x</b>' }"><p id="p" n-bind-outerhtml="html" n-bind-outertext="html"></p></div>`);
+        expect(page.$("#p")).not.toBe(null);
+        expect(page.errors.map(([message, name]) => [message, name])).toEqual([
+            ["[Nagi] cannot write:", "n-bind-outerhtml"],
+            ["[Nagi] cannot write:", "n-bind-outertext"],
+        ]);
     });
 
     it("takes a value that is only a comment as undefined", async () => {

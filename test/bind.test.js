@@ -73,6 +73,21 @@ describe("values", () => {
         expect([page.$("#b").ariaPressed, page.$("#b").hidden]).toEqual([undefined, false]);
     });
 
+    it("passes undefined as it is to popover, crossOrigin and role, and to a property that held no text when bound", async () => {
+        const page = await mount(`
+            <div n-scope="{ cfg: {}, label: 'Hi' }">
+                <div id="p" popover="manual" role="note" n-bind-popover="cfg.mode" n-bind-role="cfg.role"></div>
+                <img id="i" crossorigin="use-credentials" n-bind-crossorigin="cfg.cors">
+                <span id="s" n-bind-mylabel="label"></span>
+            </div>
+        `);
+        const values = () => [page.$("#p").popover, page.$("#p").role, page.$("#i").crossOrigin];
+        expect(values().every((value) => value !== "")).toBe(true);
+        const scope = page.scope("#p");
+        scope.label = undefined;
+        expect(page.$("#s").mylabel).toBe(undefined);
+    });
+
     it("takes an expression that ends in a line comment", async () => {
         const page = await mount(`
             <div n-scope="{ n: 1 }"><span id="s" n-bind-textcontent="n // the count"></span></div>

@@ -54,9 +54,57 @@ describe("properties", () => {
 });
 
 describe("values", () => {
-    it("binds undefined for an empty value", async () => {
+    it("writes an empty text for an empty value", async () => {
         const page = await mount(`<div n-scope="{}"><span id="s" n-bind-title=""></span></div>`);
-        expect(page.$("#s").title).toBe("undefined");
+        expect(page.$("#s").title).toBe("");
+        expect(page.errors).toEqual([]);
+    });
+
+    it("writes undefined as an empty text to a text property, and passes null and other properties as they are", async () => {
+        const page = await mount(`
+            <div n-scope="{ user: {} }">
+                <input id="i" n-bind-value="user.name">
+                <a id="a" href="/x" n-bind-href="user.link"></a>
+                <span id="s" title="t" n-bind-title="user.tip" n-bind-lang="null"></span>
+                <button id="b" n-bind-hidden="user.hidden"></button>
+            </div>
+        `);
+        expect([page.$("#i").value, page.$("#a").getAttribute("href"), page.$("#s").title, page.$("#s").lang]).toEqual(["", "", "", "null"]);
+        expect(page.$("#b").hidden).toBe(false);
+        expect(page.errors).toEqual([]);
+    });
+
+    it("passes undefined as it is to aria*, popover, crossOrigin, role, outerHTML and outerText, and to a property that held no text when bound", async () => {
+        const written = [];
+        const spy = (proto, name, start) => {
+            const values = new WeakMap();
+            Object.defineProperty(proto, name, {
+                configurable: true,
+                get() {
+                    return values.has(this) ? values.get(this) : start;
+                },
+                set(value) {
+                    values.set(this, value);
+                    written.push([name, value]);
+                },
+            });
+        };
+        const page = await mount(
+            `<div n-scope="{ cfg: {}, label: 'Hi' }">
+                <div id="p" n-bind-ariapressed="cfg.pressed" n-bind-popover="cfg.mode" n-bind-role="cfg.role" n-bind-outerhtml="cfg.html" n-bind-outertext="cfg.text"></div>
+                <img id="i" n-bind-crossorigin="cfg.cors">
+                <span id="s" n-bind-mylabel="label"></span>
+            </div>`,
+            {
+                beforeInit: (window) => {
+                    for (const name of ["ariaPressed", "popover", "role", "outerHTML", "outerText"]) spy(window.HTMLElement.prototype, name, "x");
+                    spy(window.HTMLImageElement.prototype, "crossOrigin", "x");
+                    spy(window.HTMLSpanElement.prototype, "mylabel", undefined);
+                },
+            },
+        );
+        page.scope("#p").label = undefined;
+        expect(written).toEqual([["ariaPressed", undefined], ["popover", undefined], ["role", undefined], ["outerHTML", undefined], ["outerText", undefined], ["crossOrigin", undefined], ["mylabel", "Hi"], ["mylabel", undefined]]);
         expect(page.errors).toEqual([]);
     });
 
@@ -94,7 +142,7 @@ describe("values", () => {
 
     it("takes a value that is only a comment as undefined", async () => {
         const page = await mount(`<div n-scope><span id="s" n-bind-title="// later"></span></div>`);
-        expect(page.$("#s").title).toBe("undefined");
+        expect(page.$("#s").title).toBe("");
         expect(page.errors).toEqual([]);
     });
 

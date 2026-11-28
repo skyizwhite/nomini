@@ -75,7 +75,7 @@ Adds one name to the scope from an expression, which can use the names of outer 
 - Names starting with `$` or `_nagi`, and `__host`, are reserved for Nagi.
 
 #### `n-bind-<property>`
-Sets a property of the element to an expression, and keeps it up to date. `n-bind-textcontent` sets `textContent`, and so on. A promise sets the property when it resolves.
+Sets a property of the element to an expression, and keeps it up to date. `n-bind-textcontent` sets `textContent`, and so on. A promise sets the property when it resolves. `undefined` writes an empty text to a property that holds text when it is bound, such as `value`, `title` or `href`, so a value not there yet is not shown as the word "undefined" (an empty `href` still links to the page itself). `null` is written as it is, and so is `undefined` to `aria*`, `role`, `popover` and `crossOrigin`, which removes their attribute, and to `outerHTML` and `outerText`, where empty text would take the element away.
 
 ```html
 <input n-bind-value="query" n-bind-disabled="$fetching">

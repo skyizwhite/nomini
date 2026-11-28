@@ -1009,7 +1009,13 @@
     const writerOf = (bindEl, main, sub) => {
         if (sub && main in keyedWriters) return (value) => keyedWriters[main](bindEl, sub, value);
         if (sub) return (value) => (bindEl[main][sub] = value);
-        if (main !== "class") return (value) => (bindEl[main] = value);
+        if (main !== "class") {
+            let textual = false;
+            try {
+                textual = /^inner(html|text)$/i.test(main) || (!/^(aria|role$|popover$|crossorigin$|outer(html|text)$)/i.test(main) && typeof bindEl[main] === "string");
+            } catch {}
+            return (value) => (bindEl[main] = value === undefined && textual ? "" : value);
+        }
 
         let added = new Set();
         return (value) => {

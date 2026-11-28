@@ -550,6 +550,31 @@ describe("cssMorph", () => {
         expect(page.window.classRuns).toBe(before);
     });
 
+    it("keeps the classes of class binds next to a className bind at the frame", async () => {
+        const { frames, beforeInit } = heldFrames();
+        const page = await mount(
+            `<div n-scope="{ on: true }"><button id="b" n-on-click="$get('/x')"></button><div id="target" class="old"></div></div>`,
+            { server: () => `<div id="target" n-bind-classname="'base'" n-bind-class="{ active: on }"></div>`, beforeInit },
+        );
+        page.$("#b").click();
+        await page.settle();
+        frames.forEach((fn) => fn());
+        expect(page.$("#target").className).toBe("base active");
+    });
+
+    it("does not put back a class of the markup a keyed bind took off before the frame", async () => {
+        const { frames, beforeInit } = heldFrames();
+        const page = await mount(
+            `<div id="d" n-scope="{ on: true }"><button id="b" n-on-click="$get('/x')"></button><div id="target" class="old"></div></div>`,
+            { server: () => `<div id="target" class="card active" n-bind-class.active="on"></div>`, beforeInit },
+        );
+        page.$("#b").click();
+        await page.settle();
+        page.scope("#d").on = false;
+        frames.forEach((fn) => fn());
+        expect(page.$("#target").className).toBe("card");
+    });
+
     it("settles an element torn down but left on the page before the frame to its new look", async () => {
         const { frames, beforeInit } = heldFrames();
         const page = await mount(

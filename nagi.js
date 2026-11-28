@@ -630,7 +630,7 @@
     const attributesToSettle = ["style", "class", "height", "width"];
     const rerunAtSettle = ["style", "classname", "height", "width"];
 
-    const ownClasses = (el) => new Set([...(el.nagiOwnClasses?.values() ?? [])].flatMap((names) => [...names]));
+    const heldClasses = (el) => new Set([...(el.nagiOwnClasses?.values() ?? [])].flatMap((names) => [...names]));
 
     const hasOwnLook = (el, name) => (el.nagiLook ? el.nagiLook.has(name) : el.classList.contains(name));
     const readSettled = (el) => attributesToSettle.map((attr) => [attr, el.getAttribute(attr)]);
@@ -654,9 +654,12 @@
     const putOld = (morphs) =>
         morphs.flatMap(([newEl, oldValues]) => {
             const settled = readSettled(newEl);
-            if (settled.every(([, value], i) => value === oldValues[i][1])) return [];
+            if (settled.every(([, value], i) => value === oldValues[i][1])) {
+                newEl.nagiMarkup = null;
+                return [];
+            }
             putSettled(newEl, oldValues);
-            const bound = ownClasses(newEl);
+            const bound = heldClasses(newEl);
             newEl.nagiLook = new Set(classesOf(settled[1][1] ?? "").filter((name) => name && !bound.has(name)));
             return [[newEl, settled, oldValues]];
         });
@@ -696,11 +699,13 @@
         void document.documentElement.offsetWidth;
         requestAnimationFrame(() =>
             moving.forEach(([newEl, settled, oldValues]) => {
-                const names = [...new Set([...newEl.nagiLook, ...ownClasses(newEl)])];
+                const names = [...new Set([...newEl.nagiLook, ...heldClasses(newEl)])];
                 settled[1] = ["class", names.length ? names.join(" ") : settled[1][1] == null || newEl.nagiMarkup == null ? null : ""];
                 newEl.nagiLook = newEl.nagiMarkup = null;
                 settled.forEach(([attr, value], i) => settleAttr(newEl, attr, oldValues[i][1], value));
-                newEl.nagiRuns?.forEach((run) => rerunAtSettle.includes(run.attr) && run());
+                const reruns = [...(newEl.nagiRuns ?? [])].filter((run) => rerunAtSettle.includes(run.attr));
+                reruns.forEach((run) => run());
+                if (reruns.some((run) => run.attr === "classname")) heldClasses(newEl).forEach((name) => newEl.classList.add(name));
             }),
         );
     };
@@ -983,6 +988,7 @@
             const owned = (el.nagiOwnClasses ??= new Map());
             const mine = value && (owned.get("." + sub)?.has(sub) || !hasOwnLook(el, sub));
             el.classList.toggle(sub, !!value);
+            if (!value) el.nagiLook?.delete(sub);
             owned.set("." + sub, new Set(mine ? [sub] : []));
         },
         style: (el, sub, value) => (unset(value) ? el.style.removeProperty(sub) : el.style.setProperty(sub, value)),

@@ -142,6 +142,7 @@ Puts the element in its scope's `$refs` under the given name.
 </div>
 ```
 
+- Outside any scope (on an element with no `n-scope` and none around it), Nagi logs an error and ignores it.
 - Inner scopes find the refs of outer scopes too, the nearer scope first.
 - An element with `n-scope` goes into the `$refs` of the scope around it, or into its own when no scope is around it.
 - Bindings that read `$refs` update as refs come and go. When elements share a name, the last one in the page wins, and the next to last takes its place when it goes.
@@ -174,8 +175,9 @@ What each field gives:
 - Give each checkbox of a group its own `value`. Disabled boxes count, though a form does not send them. A group becomes a list once it has a second box, so a pair that comes in two fragments of one response reads `true` or `false` until the second, and a group left with one box reads `true` or `false` again.
 - Values flow from the fields to the scope. Write the first value in the field's HTML. Assigning the name does not change the field.
 - A field whose value a binding sets, such as with `n-bind-value`, `n-bind-checked` or `n-bind-selected` on an option, is read again after each write, so its name follows, as in `<input name="slug" n-bind-value="slugify(title)">`. Bindings do not set the value of the field that has focus (for radios, its group), so a field being typed in is not written over; a value held back that way is set when the field loses focus. Two fields whose bindings compute each other, such as a unit converter, feed rounding back into the scope; write those with `n-on-input` instead.
+- With no `n-scope` on the element or around it, Nagi logs an error and ignores `n-form`.
 - The form owns the names of its fields. Don't also define them in `n-scope` or `n-let-*`, and give each field a name of its own within the scope, even across two forms in it; only radios of one group in one form, or checkboxes in one form and one `n-form` element, share a name. Nagi logs an error otherwise.
-- When a swap takes the last field of a name out of its scope, its name becomes `undefined` once the whole response is in, unless a field anywhere in the response took it over or something has written the name since; init handlers of the response still see the old value. A field taken away with `nagi.destroy` after it is removed, or in the same task, is checked the same way at the end of the task.
+- When a swap takes the last field of a name out of its scope, its name becomes `undefined` once the whole response is in, unless a field anywhere in the response took it over or something has written the name since; init handlers of the response still see the old value. A field taken away with `nagi.destroy` after it is removed, or before the next `await` or the end of the task, is checked the same way then.
 - Resetting the form sets each name in turn, so a `$watch` that reads several of them runs once for each.
 - A name like `first-name` is not a valid variable name; read it as `this['first-name']`, or use names like `firstName`.
 - For custom elements, use `n-on-*`, as in `n-on-input="this.date = $el.value"`.
@@ -233,7 +235,7 @@ Every scope has these names. They are not sent with the scope. Don't define them
 
 **Where helpers act from.** Helpers named bare in `n-on-*` and `n-bind-*` (`$dispatch`, not `this.$dispatch`) act from their element, even after an `await` and even if the element has left the page by then; what it dispatches then reaches only what left with it. Called through `this`, as in a method of the scope, helpers act from that element only until the first `await`, and from the scope's element after it.
 
-Once an element has been torn down (by a swap or `nagi.destroy`), `$watch`, `$persist` and `$debounce` called from its handlers start nothing, and its requests are still sent but not tied to it. A method that a torn-down element's handler calls after an `await` acts from the scope's element, so it still starts its work, unless the scope's element was torn down too.
+Once an element has been torn down (by a swap or `nagi.destroy`), `$watch`, `$persist` and `$debounce` called bare from its handlers, or through `this` before the first `await`, start nothing, and its requests are still sent but not tied to it. A method that a torn-down element's handler calls after an `await` acts from the scope's element, so it still starts its work, unless the scope's element was torn down too.
 
 ## Requests
 
@@ -289,7 +291,7 @@ For example, the server responds with:
 - A top-level element with no `id`, or with an `id` that is not on the page, is skipped with a warning; one with an unknown `n-swap` is skipped with an error.
 - `<script>` elements in the response do not run. Write behaviour with `n-on-init` and the other attributes.
 - A swap builds what it replaces anew, so a field inside loses its focus, its cursor and its scroll position. Don't swap a region that holds the field being typed in, such as a search box that searches as you type: answer with the results only.
-- An error response (not 2xx) is used only if it has top-level elements whose `id`s are on the page.
+- An error response (not 2xx) is swapped in only if it has top-level elements whose `id`s are on the page.
 
 **Transitions.** When an `outer` or `inner` swap replaces an element with a new one of the same `id` and tag, the new one first shows the old one's `class`, `style`, `height` and `width`, and takes its own in the next frame, so CSS transitions run. `before`, `after`, `prepend` and `append` replace nothing, so their elements do not transition. Changes made to the new element before that frame are kept:
 
@@ -298,8 +300,8 @@ For example, the server responds with:
 
 | Response header | Effect |
 |---|---|
-| `n-redirect: <url>` | Goes to the URL instead (send it with a 2xx status) |
-| `n-replace-url: <url>` | Replaces the URL in the address bar |
+| `n-redirect: <url>` | Goes to the URL instead, at any status, after a cancelable `fetchredirect`. Nothing is swapped, and no `fetcherr` or `fetchdone` is sent |
+| `n-replace-url: <url>` | Replaces the URL in the address bar, at any status, even when nothing is swapped |
 
 Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi sees only the final response and handles it like any other, with that response's own headers. A redirect to another origin usually fails, because the `n-request` header needs CORS there. To leave the page, answer with `n-redirect` (with a 2xx status) rather than a redirect. In particular, answer a Nagi request that needs a login with `n-redirect` or with HTML to swap in, not with a redirect to the login page, whose elements with `id`s on the current page would replace them.
 
@@ -309,10 +311,10 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 |---|---|
 | `init` | An element with `n-on-*`, or with an `n-bind-*` whose property Nagi accepts, is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
 | `destroy` | An element that got `init` is about to be removed by a swap, or is passed to `nagi.destroy`. An element torn down before its `init` fired gets no `destroy` |
-| `fetcherr` | A request fails or times out, or its response is not 2xx. `e.detail` has `url`, `status`, `text`, `err` and `swapped` |
+| `fetcherr` | A request fails or times out, or its response is not 2xx and has no `n-redirect`. `e.detail` has `url`, `status`, `text`, `err` and `swapped` |
 | `fetchskip` | A write is skipped because the same one is in flight. `e.detail` has `method` and `url` |
 | `fetchredirect` | Nagi is about to follow `n-redirect`. `e.detail` has `url`. Cancel it with `e.preventDefault()` to stay |
-| `fetchdone` | A request got a 2xx response, after any HTML in it is swapped in and the request is no longer counted in `$fetching`. `e.detail` has `url` (the one requested), `status` and `swapped` (whether any element was swapped). Not sent for `n-redirect` |
+| `fetchdone` | A request got a 2xx response, after any HTML in it is swapped in and the request is no longer counted in `$fetching`. `e.detail` has `url` (the one requested, with any query string Nagi added from the data), `status` and `swapped` (whether any element was swapped). Not sent for `n-redirect` |
 
 - `init` and `destroy` do not bubble.
 - A request aborted before its response arrives sends no `fetcherr` and no `fetchdone`: a read cut off by a newer request of the scope or by the teardown of its element, and any request stopped by `$abort()`. A request that runs out of its `timeout` sends `fetcherr`.

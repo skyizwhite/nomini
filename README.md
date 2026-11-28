@@ -58,7 +58,7 @@ The values are plain JavaScript: the names of the scope are variables, `this` is
 
 ### Fetching and partial updates
 
-`$get`, `$post` and the other request helpers send what you pass them. The server answers with HTML, and each top-level element with an `id` replaces the element with the same `id` on the page, or, with `n-swap`, is put around or inside it.
+`$get`, `$post` and the other request helpers send what you pass them. The server answers with HTML, and each top-level element with an `id` replaces the element with the same `id` on the page; with `n-swap`, its children replace the children of that element or go before, after or inside it.
 
 ```html
 <div n-scope>

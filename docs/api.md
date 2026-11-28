@@ -208,7 +208,7 @@ Pick the values a request needs from `$dataset()` rather than sending all of it.
 
 ## Helpers
 
-Every scope has these names. They are not sent with the scope. Defining or assigning these names, or any name that starts with `$` or `_nagi`, logs an error and changes nothing.
+Every scope has these names. They are not sent with the scope. Defining these names, or any name that starts with `$` or `_nagi`, in `n-scope` or `n-let-*` logs an error and leaves it out. Assigning one of them, or another of Nagi's names of the scope, logs an error and changes nothing. Other names that start with `$`, such as a `$` that a script defines on `window`, are plain globals and are not Nagi's.
 
 | Helper | Description |
 |---|---|

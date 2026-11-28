@@ -1,4 +1,4 @@
-// Nagi v0.5.0
+// Nagi v0.6.0
 // Forked from Nomini (https://github.com/nonnorm/nomini)
 // Inspired by aidenybai/dababy
 // Copyright (c) 2025 nonnorm

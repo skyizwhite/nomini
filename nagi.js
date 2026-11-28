@@ -547,7 +547,7 @@
             node.nagiBound = node.nagiField = node.nagiInitDue = false;
             node.nagiGone = true;
             node.nagiGen = (node.nagiGen ?? 0) + 1;
-            node.nagiProxy = node.nagiRaw = node.nagiFields = null;
+            node.nagiProxy = node.nagiRaw = node.nagiFields = node.nagiOwnClasses = null;
             node.nagiBroken = false;
             ownScopes.delete(node);
         });
@@ -628,6 +628,11 @@
     };
 
     const attributesToSettle = ["style", "class", "height", "width"];
+    const rerunAtSettle = ["style", "classname", "height", "width"];
+
+    const ownClasses = (el) => new Set([...(el.nagiOwnClasses?.values() ?? [])].flatMap((names) => [...names]));
+
+    const hasOwnLook = (el, name) => (el.nagiLook ? el.nagiLook.has(name) : el.classList.contains(name));
     const readSettled = (el) => attributesToSettle.map((attr) => [attr, el.getAttribute(attr)]);
 
     const cssMorph = (roots, removed) => {
@@ -636,7 +641,9 @@
         return roots.flatMap((root) =>
             queryAttr(root, "[id]").flatMap((newEl) => {
                 const oldEl = byId.get(newEl.id);
-                return oldEl && oldEl.tagName === newEl.tagName ? [[newEl, readSettled(oldEl)]] : [];
+                if (!oldEl || oldEl.tagName !== newEl.tagName) return [];
+                newEl.nagiMarkup = newEl.getAttribute("class");
+                return [[newEl, readSettled(oldEl)]];
             }),
         );
     };
@@ -649,6 +656,8 @@
             const settled = readSettled(newEl);
             if (settled.every(([, value], i) => value === oldValues[i][1])) return [];
             putSettled(newEl, oldValues);
+            const bound = ownClasses(newEl);
+            newEl.nagiLook = new Set(classesOf(settled[1][1] ?? "").filter((name) => name && !bound.has(name)));
             return [[newEl, settled, oldValues]];
         });
 
@@ -687,8 +696,11 @@
         void document.documentElement.offsetWidth;
         requestAnimationFrame(() =>
             moving.forEach(([newEl, settled, oldValues]) => {
+                const names = [...new Set([...newEl.nagiLook, ...ownClasses(newEl)])];
+                settled[1] = ["class", names.length ? names.join(" ") : settled[1][1] == null || newEl.nagiMarkup == null ? null : ""];
+                newEl.nagiLook = newEl.nagiMarkup = null;
                 settled.forEach(([attr, value], i) => settleAttr(newEl, attr, oldValues[i][1], value));
-                newEl.nagiRuns?.forEach((run) => attributesToSettle.includes(run.attr) && run());
+                newEl.nagiRuns?.forEach((run) => rerunAtSettle.includes(run.attr) && run());
             }),
         );
     };
@@ -967,7 +979,12 @@
 
     const keyedWriters = {
         __proto__: null,
-        class: (el, sub, value) => el.classList.toggle(sub, !!value),
+        class: (el, sub, value) => {
+            const owned = (el.nagiOwnClasses ??= new Map());
+            const mine = value && (owned.get("." + sub)?.has(sub) || !hasOwnLook(el, sub));
+            el.classList.toggle(sub, !!value);
+            owned.set("." + sub, new Set(mine ? [sub] : []));
+        },
         style: (el, sub, value) => (unset(value) ? el.style.removeProperty(sub) : el.style.setProperty(sub, value)),
         dataset: (el, sub, value) =>
             unset(value) ? el.removeAttribute("data-" + sub) : el.setAttribute("data-" + sub, value),
@@ -1018,16 +1035,18 @@
         }
 
         let added = new Set();
-        return (value) => {
+        const write = (value) => {
             const next = new Set(classesOf(value).filter(Boolean));
             const mine = new Set();
             added.forEach((name) => next.has(name) || bindEl.classList.remove(name));
             next.forEach((name) => {
-                if (added.has(name) || !bindEl.classList.contains(name)) mine.add(name);
+                if (added.has(name) || !hasOwnLook(bindEl, name)) mine.add(name);
                 bindEl.classList.add(name);
             });
             added = mine;
+            (bindEl.nagiOwnClasses ??= new Map()).set(write, mine);
         };
+        return write;
     };
 
     const handle = (val, e, place) => val(e)?.catch?.((err) => console.error("[Nagi] failed to run:", val, "\n", err, ...place));
@@ -1080,7 +1099,7 @@
             new NativePromise((resolve, reject) => value.then(resolve, reject))
                 .then((resolved) => mine === latest && !run?.gone && write(resolved, true))
                 .catch((err) => mine === latest && !run?.gone && console.error("[Nagi] failed to run:", val, "\n", err, ...runPlace(run)));
-        }, bindEl, bindEl, /^class(name|list)$/i.test(main) ? "class" : main, name);
+        }, bindEl, bindEl, /^class(name|list)$/i.test(main) ? "classname" : main, name);
         run.nagiRetry = () => skipped && run();
     };
 

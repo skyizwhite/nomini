@@ -547,7 +547,7 @@
             node.nagiBound = node.nagiField = node.nagiInitDue = false;
             node.nagiGone = true;
             node.nagiGen = (node.nagiGen ?? 0) + 1;
-            node.nagiProxy = node.nagiRaw = node.nagiFields = null;
+            node.nagiProxy = node.nagiRaw = node.nagiFields = node.nagiOwnClasses = null;
             node.nagiBroken = false;
             ownScopes.delete(node);
         });
@@ -628,6 +628,25 @@
     };
 
     const attributesToSettle = ["style", "class", "height", "width"];
+    const rerunAtSettle = ["style", "classname", "height", "width"];
+
+    const heldClasses = (el) => new Set([...(el.nagiOwnClasses?.values() ?? [])].flatMap((names) => [...names]));
+
+    const hasOwnLook = (el, name) => (el.nagiLook ? el.nagiLook.has(name) : el.classList.contains(name));
+
+    const touchClass = (el, name) => el.nagiLook && (el.nagiTouched ??= new Set()).add(name);
+
+    const settleClass = (el, from, markup) => {
+        const old = new Set(classesOf(from ?? "").filter(Boolean));
+        const now = new Set(el.classList);
+        const touched = el.nagiTouched ?? new Set();
+        const names = new Set([...el.nagiLook, ...heldClasses(el)]);
+        now.forEach((name) => old.has(name) || touched.has(name) || names.add(name));
+        old.forEach((name) => now.has(name) || touched.has(name) || names.delete(name));
+        if (names.size) el.setAttribute("class", [...names].join(" "));
+        else if (markup == null) el.removeAttribute("class");
+        else el.setAttribute("class", "");
+    };
     const readSettled = (el) => attributesToSettle.map((attr) => [attr, el.getAttribute(attr)]);
 
     const cssMorph = (roots, removed) => {
@@ -636,7 +655,9 @@
         return roots.flatMap((root) =>
             queryAttr(root, "[id]").flatMap((newEl) => {
                 const oldEl = byId.get(newEl.id);
-                return oldEl && oldEl.tagName === newEl.tagName ? [[newEl, readSettled(oldEl)]] : [];
+                if (!oldEl || oldEl.tagName !== newEl.tagName) return [];
+                newEl.nagiMarkup = newEl.getAttribute("class");
+                return [[newEl, readSettled(oldEl)]];
             }),
         );
     };
@@ -647,8 +668,13 @@
     const putOld = (morphs) =>
         morphs.flatMap(([newEl, oldValues]) => {
             const settled = readSettled(newEl);
-            if (settled.every(([, value], i) => value === oldValues[i][1])) return [];
+            if (settled.every(([, value], i) => value === oldValues[i][1])) {
+                newEl.nagiMarkup = null;
+                return [];
+            }
             putSettled(newEl, oldValues);
+            const bound = heldClasses(newEl);
+            newEl.nagiLook = new Set(classesOf(settled[1][1] ?? "").filter((name) => name && !bound.has(name)));
             return [[newEl, settled, oldValues]];
         });
 
@@ -687,8 +713,12 @@
         void document.documentElement.offsetWidth;
         requestAnimationFrame(() =>
             moving.forEach(([newEl, settled, oldValues]) => {
-                settled.forEach(([attr, value], i) => settleAttr(newEl, attr, oldValues[i][1], value));
-                newEl.nagiRuns?.forEach((run) => attributesToSettle.includes(run.attr) && run());
+                settleClass(newEl, oldValues[1][1], newEl.nagiMarkup);
+                newEl.nagiLook = newEl.nagiMarkup = newEl.nagiTouched = null;
+                settled.forEach(([attr, value], i) => attr === "class" || settleAttr(newEl, attr, oldValues[i][1], value));
+                const reruns = [...(newEl.nagiRuns ?? [])].filter((run) => rerunAtSettle.includes(run.attr));
+                reruns.forEach((run) => run());
+                if (reruns.some((run) => run.attr === "classname")) heldClasses(newEl).forEach((name) => newEl.classList.add(name));
             }),
         );
     };
@@ -967,7 +997,14 @@
 
     const keyedWriters = {
         __proto__: null,
-        class: (el, sub, value) => el.classList.toggle(sub, !!value),
+        class: (el, sub, value) => {
+            const owned = (el.nagiOwnClasses ??= new Map());
+            const mine = value && (owned.get("." + sub)?.has(sub) || !hasOwnLook(el, sub));
+            el.classList.toggle(sub, !!value);
+            touchClass(el, sub);
+            if (!value) el.nagiLook?.delete(sub);
+            owned.set("." + sub, new Set(mine ? [sub] : []));
+        },
         style: (el, sub, value) => (unset(value) ? el.style.removeProperty(sub) : el.style.setProperty(sub, value)),
         dataset: (el, sub, value) =>
             unset(value) ? el.removeAttribute("data-" + sub) : el.setAttribute("data-" + sub, value),
@@ -1018,16 +1055,19 @@
         }
 
         let added = new Set();
-        return (value) => {
+        const write = (value) => {
             const next = new Set(classesOf(value).filter(Boolean));
             const mine = new Set();
-            added.forEach((name) => next.has(name) || bindEl.classList.remove(name));
+            added.forEach((name) => next.has(name) || (bindEl.classList.remove(name), touchClass(bindEl, name)));
             next.forEach((name) => {
-                if (added.has(name) || !bindEl.classList.contains(name)) mine.add(name);
+                if (added.has(name) || !hasOwnLook(bindEl, name)) mine.add(name);
                 bindEl.classList.add(name);
+                touchClass(bindEl, name);
             });
             added = mine;
+            (bindEl.nagiOwnClasses ??= new Map()).set(write, mine);
         };
+        return write;
     };
 
     const handle = (val, e, place) => val(e)?.catch?.((err) => console.error("[Nagi] failed to run:", val, "\n", err, ...place));
@@ -1080,7 +1120,7 @@
             new NativePromise((resolve, reject) => value.then(resolve, reject))
                 .then((resolved) => mine === latest && !run?.gone && write(resolved, true))
                 .catch((err) => mine === latest && !run?.gone && console.error("[Nagi] failed to run:", val, "\n", err, ...runPlace(run)));
-        }, bindEl, bindEl, /^class(name|list)$/i.test(main) ? "class" : main, name);
+        }, bindEl, bindEl, /^class(name|list)$/i.test(main) ? "classname" : main, name);
         run.nagiRetry = () => skipped && run();
     };
 

@@ -65,6 +65,14 @@ describe("misuse", () => {
         expect(span.textContent).toBe("1");
     });
 
+    it("logs an error for nagi.init on an element of another document", async () => {
+        const page = await mount(`<div></div>`);
+        const other = new page.window.DOMParser().parseFromString(`<div n-scope="{ n: 2 }"><b n-on-click="n++"></b></div>`, "text/html").body.firstElementChild;
+        page.window.nagi.init(other);
+        expect(other.nagiProxy ?? null).toBe(null);
+        expect(page.errors.map(([message]) => message)).toEqual(["[Nagi] nagi.init needs an element in the page:"]);
+    });
+
     it("refuses an assignment to a helper with an error, and keeps the helper working", async () => {
         let answer;
         const page = await mount(

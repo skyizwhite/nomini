@@ -1266,7 +1266,7 @@
     const isElement = (name, el) => el?.nodeType === 1 || void console.error(`[Nagi] nagi.${name} needs an element:`, el);
 
     window.nagi = Object.freeze({
-        init: (el) => void (isElement("init", el) && (el.isConnected ? init(el) : console.error("[Nagi] nagi.init needs an element in the page:", el))),
+        init: (el) => void (isElement("init", el) && (el.getRootNode({ composed: true }) === document ? init(el) : console.error("[Nagi] nagi.init needs an element in the page:", el))),
         destroy: (el) => void (isElement("destroy", el) && drop(el)),
     });
 

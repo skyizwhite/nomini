@@ -68,7 +68,7 @@ Adds one name to the scope from an expression, which can use the names of outer 
 
 - Write it on the element of `n-scope`; elsewhere Nagi logs an error and ignores it.
 - It adds the name to the scope (the copy of the `n-scope` object), or sets it there if the object has it; the object itself is not changed.
-- Names starting with `$` or `_nagi`, and `__host`, are reserved for Nagi.
+- Names starting with `$` or `_nagi` (in any case), `__host` and `__proto__` are reserved for Nagi.
 
 ### `n-bind-<property>`
 
@@ -143,12 +143,12 @@ Puts the element in its scope's `$refs` under the given name.
 ```
 
 - Inner scopes find the refs of outer scopes too, the nearer scope first.
-- An element with `n-scope` goes into the `$refs` of the scope around it.
+- An element with `n-scope` goes into the `$refs` of the scope around it, or into its own when no scope is around it.
 - Bindings that read `$refs` update as refs come and go. When elements share a name, the last one in the page wins, and the next to last takes its place when it goes.
 
 ### `n-form`
 
-Copies the value of each named field inside it into the scope, as the user changes it.
+Copies the value of each named field inside it into the scope of the `n-form` element (its own, or the one around it), as the user changes it, even for fields inside inner scopes.
 
 ```html
 <form n-scope n-form n-on-submit.prevent="$post('/signup', e)">
@@ -226,7 +226,7 @@ Every scope has these names. They are not sent with the scope. Don't define them
 
 - The same place is the same attribute or `$watch`, or, for `.debounce<ms>` and `this.$debounce`, the same handler.
 - Native functions, such as bound ones, count as the same code.
-- To choose which calls count as one, pass a `key`; calls from the same element with the same key count as one. Pass one for two bound functions, or closures in a loop, at one place; for `this.$debounce` after an `await`; and to each `$debounce` in the `$watch`es that a `$watch` or `n-bind-*` makes when any of those watches is made only under some condition, since they are told apart by their order.
+- To choose which calls count as one, pass a `key`; calls from the same element with the same key count as one. Pass one for two bound functions, or closures in a loop, at one place; for `this.$debounce` after an `await`; and to each `$debounce` in the `$watch`es that a `$watch` or `n-bind-*` makes when any of those watches is made only under some condition.
 - `abortable: true` drops a run still waiting when the scope starts a request.
 
 **`$persist(name, key)`.** When called, it sets the name to the stored value, if there is one, and from then on saves the name as JSON whenever it changes. Call it from `n-on-init`. When the value gives no JSON, as `undefined` and functions do, or cannot be saved, the stored value is removed and the next page starts from the scope's own value. The key is `_nagiProp-<name>` unless given, the same on every page of the origin.
@@ -250,7 +250,7 @@ A request sends only the data you pass:
 ```
 
 - GET, HEAD and DELETE put the data in the query string, without files (Nagi warns); other methods send it as the body.
-- Every request has an `n-request: true` header. Nagi sends no other header and no JSON body: it is made for a server of your own that answers with HTML. Send a CSRF token in the body, as with `$dataset()` above.
+- Every request has an `n-request: true` header. Nagi sends no other header and no JSON body: it is made for a server of your own that answers with HTML. Send a CSRF token as data, as with `$dataset()` above. GET, HEAD and DELETE put it in the query string, so it shows in the URL; for a write that must keep it out of URLs, use `$post` or `$fetch(url, 'POST', …)` and let the server read the intended action from the data or the URL.
 - The helpers return nothing: the response updates the page, and [events](#events) tell how it went.
 
 `options` can hold:
@@ -262,7 +262,7 @@ A request sends only the data you pass:
 
 How a scope's requests go together:
 
-- **Any request stops the scope's read.** A scope runs one read (GET, HEAD or OPTIONS) at a time. A new request of the scope, a write such as POST included, aborts the read in flight and drops the abortable debounces waiting in the scope. Put reads and writes that have nothing to do with each other, or reads that should run side by side, in separate scopes.
+- **Any request stops the scope's read.** A scope runs one read (GET, HEAD or OPTIONS) at a time. A new request the scope sends, a write such as POST included, aborts the read in flight and drops the abortable debounces waiting in the scope. Put reads and writes that have nothing to do with each other, or reads that should run side by side, in separate scopes.
 - **Writes are never cut off** by other requests. The same write (method, URL and data) is not sent again while one is in flight; a `fetchskip` event fires instead.
 
 ## Responses
@@ -307,7 +307,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 
 | Event | When |
 |---|---|
-| `init` | An element with `n-bind-*` or `n-on-*` is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
+| `init` | An element with `n-bind-*` or `n-on-*` (at least one that Nagi could set up) is set up. It fires once everything set up with it (on load, by one fragment of a response, or by `nagi.init`) is bound, in the order Nagi found the elements, so a handler can reach the elements inside |
 | `destroy` | An element that got `init` is about to be removed by a swap, or is passed to `nagi.destroy`. An element torn down before its `init` fired gets no `destroy` |
 | `fetcherr` | A request fails or times out, or its response is not 2xx. `e.detail` has `url`, `status`, `text`, `err` and `swapped` |
 | `fetchskip` | A write is skipped because the same one is in flight. `e.detail` has `method` and `url` |

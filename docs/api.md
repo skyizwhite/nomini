@@ -15,12 +15,14 @@ Every attribute, helper, event and option of Nagi, with the rules to know. For a
 
 ## Expressions
 
-The values of `n-scope`, `n-let-*`, `n-bind-*` and `n-on-*` are plain JavaScript. In them:
+The values of `n-let-*`, `n-bind-*` and `n-on-*` are plain JavaScript. In them:
 
 - the names of the scope, and of the scopes around it, are variables;
 - `this` is the scope;
 - `$el` is the element;
 - in `n-on-*`, `e` is the event.
+
+The value of `n-scope` is plain JavaScript too, but it runs before its scope exists: see [`n-scope`](#n-scope).
 
 Rules that apply to all of them:
 
@@ -49,7 +51,7 @@ Makes a reactive scope from an object. Elements inside it can read and write its
 
 - The value can be any expression that gives an object, such as `n-scope="makeCart($el)"`. Write methods with method syntax (`inc() { this.n++ }`), not arrow functions, and reach the scope through `this`.
 - The scope is a copy of the object: its own properties, getters and setters included, on the same prototype. Code that keeps a reference to the original object changes the original, not the scope, so a method written as `inc() { state.n++ }` updates nothing; write `this.n++`. Objects that use `#private` fields do not work, since the copy has none.
-- Like `n-let-*`, the value can read the names of outer scopes, once when the scope is made, but not Nagi's `$` names other than `$el`.
+- The value can read the names of outer scopes, once when the scope is made, but not Nagi's `$` names other than `$el`. In it, `this` is not the scope, and assigning a name of an outer scope does nothing.
 - `n-scope` with no value makes an empty scope. If the value throws, or gives a promise, a built-in object such as a `Map`, or no object at all, Nagi logs an error and leaves the element, its attributes and what is inside it alone, as with `n-ignore`. To set it up once fixed, call `nagi.destroy` and then `nagi.init` on it.
 - Scopes nest. Inner elements can use the names of outer scopes too, and assigning such a name changes it in the scope that has it.
 
@@ -65,7 +67,7 @@ Adds one name to the scope from an expression, which can use the names of outer 
 ```
 
 - Write it on the element of `n-scope`; elsewhere Nagi logs an error and ignores it.
-- It sets a key of the same name in the `n-scope` object.
+- It adds the name to the scope (the copy of the `n-scope` object), or sets it there if the object has it; the object itself is not changed.
 - Names starting with `$` or `_nagi`, and `__host`, are reserved for Nagi.
 
 ### `n-bind-<property>`
@@ -164,6 +166,7 @@ What each field gives:
 | Checkboxes sharing a name | The list of the checked values |
 | Radio group | The checked value |
 | Number field | A number, `undefined` when empty |
+| Range field | A number |
 | File field | Its `FileList` |
 | Multiple select | A list |
 | Other `input`, `select` and `textarea` | A string |
@@ -202,7 +205,7 @@ Pick the values a request needs from `$dataset()` rather than sending all of it.
 
 ## Helpers
 
-Every scope has these names. They are not sent with the scope and cannot be redefined.
+Every scope has these names. They are not sent with the scope. Don't define them in `n-scope` or `n-let-*` (Nagi logs an error), and don't assign them.
 
 | Helper | Description |
 |---|---|
@@ -226,7 +229,7 @@ Every scope has these names. They are not sent with the scope and cannot be rede
 - To choose which calls count as one, pass a `key`; calls from the same element with the same key count as one. Pass one for two bound functions, or closures in a loop, at one place; for `this.$debounce` after an `await`; and to each `$debounce` in the `$watch`es that a `$watch` or `n-bind-*` makes when any of those watches is made only under some condition, since they are told apart by their order.
 - `abortable: true` drops a run still waiting when the scope starts a request.
 
-**`$persist(name, key)`.** Saves the name as JSON whenever it changes, and restores it when the page loads. Call it from `n-on-init`. When the value gives no JSON, as `undefined` and functions do, or cannot be saved, the stored value is removed and the next page starts from the scope's own value. The key is `_nagiProp-<name>` unless given, the same on every page of the origin.
+**`$persist(name, key)`.** When called, it sets the name to the stored value, if there is one, and from then on saves the name as JSON whenever it changes. Call it from `n-on-init`. When the value gives no JSON, as `undefined` and functions do, or cannot be saved, the stored value is removed and the next page starts from the scope's own value. The key is `_nagiProp-<name>` unless given, the same on every page of the origin.
 
 **Where helpers act from.** Helpers named bare in `n-on-*` and `n-bind-*` (`$dispatch`, not `this.$dispatch`) act from their element, even after an `await` and even if the element has left the page by then; what it dispatches then reaches only what left with it. Called through `this`, as in a method of the scope, helpers act from that element only until the first `await`, and from the scope's element after it.
 
@@ -236,7 +239,7 @@ Once an element has been torn down (by a swap or `nagi.destroy`), `$watch`, `$pe
 
 A request sends only the data you pass:
 
-- **An object.** Arrays repeat the key, files are sent as `FormData`, and a `Date` goes as its ISO text. Functions are left out, and so, with a warning, is anything that does not turn into text, such as a nested object, and a value that throws when read, such as a getter that throws.
+- **An object.** Its own enumerable names are sent, so getters on a class's prototype are not. Arrays repeat the key, files are sent as `FormData`, and a `Date` goes as its ISO text. `null`, `undefined` and functions are left out, so an empty number field is not sent. Left out with a warning are anything that does not turn into text, such as a nested object, and a value that throws when read, such as a getter that throws.
 - **The scope, as `this`.** It is sent as an object of the names defined on that scope itself: its own enumerable names, not those of outer scopes or prototypes, nor Nagi's.
 - **A form, an element inside one, or a submit event**, to send the form's fields.
 - **`FormData`, `URLSearchParams` or a query string.**
@@ -259,7 +262,7 @@ A request sends only the data you pass:
 
 How a scope's requests go together:
 
-- **Any request stops the scope's read.** A scope runs one GET at a time. A new request of the scope, a write such as POST included, aborts the GET in flight and drops the abortable debounces waiting in the scope. Put reads and writes that have nothing to do with each other, or reads that should run side by side, in separate scopes.
+- **Any request stops the scope's read.** A scope runs one read (GET, HEAD or OPTIONS) at a time. A new request of the scope, a write such as POST included, aborts the read in flight and drops the abortable debounces waiting in the scope. Put reads and writes that have nothing to do with each other, or reads that should run side by side, in separate scopes.
 - **Writes are never cut off** by other requests. The same write (method, URL and data) is not sent again while one is in flight; a `fetchskip` event fires instead.
 
 ## Responses
@@ -283,7 +286,7 @@ For example, the server responds with:
 ```
 
 - What comes in is set up like the rest of the page, and what it replaces is torn down.
-- A top-level element with no `id`, or with an `id` that is not on the page, is skipped with a warning, and so is an unknown `n-swap`.
+- A top-level element with no `id`, or with an `id` that is not on the page, is skipped with a warning; one with an unknown `n-swap` is skipped with an error.
 - `<script>` elements in the response do not run. Write behaviour with `n-on-init` and the other attributes.
 - A swap builds what it replaces anew, so a field inside loses its focus, its cursor and its scroll position. Don't swap a region that holds the field being typed in, such as a search box that searches as you type: answer with the results only.
 - An error response (not 2xx) is used only if it has top-level elements whose `id`s are on the page.
@@ -312,6 +315,7 @@ Requests are sent with `fetch`, which follows HTTP redirects by itself. Nagi see
 | `fetchdone` | A request got a 2xx response, after any HTML in it is swapped in and the request is no longer counted in `$fetching`. `e.detail` has `url` (the one requested), `status` and `swapped` (whether any element was swapped). Not sent for `n-redirect` |
 
 - `init` and `destroy` do not bubble.
+- An aborted request sends no `fetcherr` and no `fetchdone`: a read cut off by a newer request of the scope or by the teardown of its element, and any request stopped by `$abort()`. A request that runs out of its `timeout` sends `fetcherr`.
 - Elements an `init` handler adds need `nagi.init`, and elements inside whose `n-*` attributes it changes need `nagi.destroy` and then `nagi.init`.
 - The `fetch*` events are sent to the element that made the request, and bubble. Listen with `.window` to catch them all:
 

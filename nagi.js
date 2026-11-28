@@ -1012,7 +1012,7 @@
         if (main !== "class") {
             let textual = false;
             try {
-                textual = !/^(aria|role$|popover$|crossorigin$)/i.test(main) && typeof bindEl[main] === "string";
+                textual = /^inner(html|text)$/i.test(main) || (!/^(aria|role$|popover$|crossorigin$|outerhtml$)/i.test(main) && typeof bindEl[main] === "string");
             } catch {}
             return (value) => (bindEl[main] = value === undefined && textual ? "" : value);
         }
